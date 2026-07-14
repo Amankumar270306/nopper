@@ -1,0 +1,79 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nopper"
+version = "1.0.0"
+description = "A production-grade CLI and Python SDK to manage every AI provider from a unified interface."
+readme = "README.md"
+authors = [
+    { name = "Aman kumar", email = "amankumar.pro2006@gmail.com" }
+]
+requires-python = ">=3.10"
+keywords = [
+    "ai",
+    "llm",
+    "sdk",
+    "cli",
+    "openai",
+    "anthropic",
+    "gemini",
+    "ollama",
+    "groq",
+    "mistral",
+    "openrouter",
+    "together",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "typer>=0.12.0",
+    "rich>=13.7.0",
+    "httpx>=0.27.0",
+    "pydantic>=2.7.0",
+    "pydantic-settings>=2.2.0",
+]
+
+[project.scripts]
+nopper = "nopper.cli.main:app"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.3.0",
+    "mypy>=1.9.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/Amankumar270306/nopper"
+Repository = "https://github.com/Amankumar270306/nopper"
+Documentation = "https://github.com/Amankumar270306/nopper#readme"
+
+[tool.hatch.build.targets.wheel]
+packages = ["nopper"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+ignore_missing_imports = true
