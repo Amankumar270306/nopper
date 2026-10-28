@@ -76,23 +76,28 @@ def main(ctx: typer.Context):
         update_config("base_urls", urls)
         
     if provider == "custom_node":
-        from nopper.config import NodeConfig, save_config
+        from nopper.node.config import NodeConfig
+        from nopper.node.manager import NodeManager, prompt_save_location
         settings = load_config()
-        
+
         node_name = Prompt.ask("Enter a name for this remote node (e.g. mark_gpu)")
-        while node_name in settings.nodes:
+        while node_name in settings.nodes or NodeManager.find_node_path(node_name):
             console.print(f"[red]Node '{node_name}' already exists. Please choose a unique name.[/red]")
             node_name = Prompt.ask("Enter a name for this remote node")
-            
+
         base_url = Prompt.ask("Enter the Tailscale/Remote Base URL (e.g. http://100.x.y.z:11434/v1)")
         api_key = Prompt.ask("Enter API Key (leave empty if none)", default="")
-        
-        settings.nodes[node_name] = NodeConfig(
-            type="remote",
+
+        loc_type, chosen_dir = prompt_save_location()
+
+        node_cfg = NodeConfig(
+            name=node_name,
+            provider="remote" if "http" in base_url else "openai",
             base_url=base_url,
             api_key=api_key if api_key else None
         )
-        save_config(settings)
+        saved_file = NodeManager.save(node_cfg, location=loc_type, path=str(chosen_dir))
+        console.print(f"[green]Saved node '{node_name}' to:[/green] [cyan]{saved_file}[/cyan]")
         provider = node_name
 
     update_config("provider", provider)

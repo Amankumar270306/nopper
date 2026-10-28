@@ -24,10 +24,13 @@ class OllamaAdapter(BaseProvider):
         tools: list[dict[str, Any]] | None = None,
         tool_choice: str | dict[str, Any] | None = None,
         response_model: Any | None = None,
+        timeout: float | None = None,
         **kwargs: Any
     ) -> ChatResponse:
         url = f"{self.BASE_URL}/chat"
         target_model = model or self.default_model or "llama3"
+        effective_timeout = timeout if timeout is not None else kwargs.pop("timeout", self.timeout)
+        httpx_timeout = self.resolve_timeout(effective_timeout)
 
         options = {}
         if temperature is not None:
@@ -45,8 +48,8 @@ class OllamaAdapter(BaseProvider):
         if options:
             payload["options"] = options
 
-        response = httpx.post(url, json=payload)
-        response.raise_for_status()
+        response = httpx.post(url, json=payload, timeout=httpx_timeout)
+        self.check_response(response)
         data = response.json()
 
         return ChatResponse(
@@ -56,7 +59,8 @@ class OllamaAdapter(BaseProvider):
             model=data["model"],
             prompt_tokens=data.get("prompt_eval_count", 0),
             completion_tokens=data.get("eval_count", 0),
-            total_tokens=data.get("prompt_eval_count", 0) + data.get("eval_count", 0)
+            total_tokens=data.get("prompt_eval_count", 0) + data.get("eval_count", 0),
+            timeout=effective_timeout,
         )
 
     def stream(
@@ -68,10 +72,13 @@ class OllamaAdapter(BaseProvider):
         tools: list[dict[str, Any]] | None = None,
         tool_choice: str | dict[str, Any] | None = None,
         response_model: Any | None = None,
+        timeout: float | None = None,
         **kwargs: Any
     ) -> Iterator[StreamChunk]:
         url = f"{self.BASE_URL}/chat"
         target_model = model or self.default_model or "llama3"
+        effective_timeout = timeout if timeout is not None else kwargs.pop("timeout", self.timeout)
+        httpx_timeout = self.resolve_timeout(effective_timeout)
 
         options = {}
         if temperature is not None:
@@ -89,8 +96,8 @@ class OllamaAdapter(BaseProvider):
         if options:
             payload["options"] = options
 
-        with httpx.stream("POST", url, json=payload) as response:
-            response.raise_for_status()
+        with httpx.stream("POST", url, json=payload, timeout=httpx_timeout) as response:
+            self.check_response(response)
             for line in response.iter_lines():
                 if not line:
                     continue
@@ -107,21 +114,22 @@ class OllamaAdapter(BaseProvider):
 
     def models(self) -> list[str]:
         url = f"{self.BASE_URL}/tags"
-        response = httpx.get(url)
-        response.raise_for_status()
+        response = httpx.get(url, timeout=self.timeout)
+        self.check_response(response)
         data = response.json()
         return [model["name"] for model in data.get("models", [])]
 
-    def embed(self, text: str, model: str | None = None, **kwargs: Any) -> list[float]:
-
+    def embed(self, text: str, model: str | None = None, timeout: float | None = None, **kwargs: Any) -> list[float]:
         url = f"{self.BASE_URL}/embeddings"
+        effective_timeout = timeout if timeout is not None else kwargs.pop("timeout", self.timeout)
+        httpx_timeout = self.resolve_timeout(effective_timeout)
         payload = {
             "prompt": text,
             "model": model or "nomic-embed-text",
             **kwargs
         }
-        response = httpx.post(url, json=payload)
-        response.raise_for_status()
+        response = httpx.post(url, json=payload, timeout=httpx_timeout)
+        self.check_response(response)
         data = response.json()
         return cast(list[float], data["embedding"])
 
@@ -134,10 +142,13 @@ class OllamaAdapter(BaseProvider):
         tools: list[dict[str, Any]] | None = None,
         tool_choice: str | dict[str, Any] | None = None,
         response_model: Any | None = None,
+        timeout: float | None = None,
         **kwargs: Any
     ) -> ChatResponse:
         url = f"{self.BASE_URL}/chat"
         target_model = model or self.default_model or "llama3"
+        effective_timeout = timeout if timeout is not None else kwargs.pop("timeout", self.timeout)
+        httpx_timeout = self.resolve_timeout(effective_timeout)
 
         options = {}
         if temperature is not None:
@@ -155,9 +166,9 @@ class OllamaAdapter(BaseProvider):
         if options:
             payload["options"] = options
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=httpx_timeout) as client:
             response = await client.post(url, json=payload)
-            response.raise_for_status()
+            self.check_response(response)
             data = response.json()
 
         return ChatResponse(
@@ -167,7 +178,8 @@ class OllamaAdapter(BaseProvider):
             model=data["model"],
             prompt_tokens=data.get("prompt_eval_count", 0),
             completion_tokens=data.get("eval_count", 0),
-            total_tokens=data.get("prompt_eval_count", 0) + data.get("eval_count", 0)
+            total_tokens=data.get("prompt_eval_count", 0) + data.get("eval_count", 0),
+            timeout=effective_timeout,
         )
 
     async def astream(
@@ -179,10 +191,13 @@ class OllamaAdapter(BaseProvider):
         tools: list[dict[str, Any]] | None = None,
         tool_choice: str | dict[str, Any] | None = None,
         response_model: Any | None = None,
+        timeout: float | None = None,
         **kwargs: Any
     ) -> AsyncIterator[StreamChunk]:
         url = f"{self.BASE_URL}/chat"
         target_model = model or self.default_model or "llama3"
+        effective_timeout = timeout if timeout is not None else kwargs.pop("timeout", self.timeout)
+        httpx_timeout = self.resolve_timeout(effective_timeout)
 
         options = {}
         if temperature is not None:
@@ -200,9 +215,9 @@ class OllamaAdapter(BaseProvider):
         if options:
             payload["options"] = options
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=httpx_timeout) as client:
             async with client.stream("POST", url, json=payload) as response:
-                response.raise_for_status()
+                self.check_response(response)
                 async for line in response.aiter_lines():
                     if not line:
                         continue

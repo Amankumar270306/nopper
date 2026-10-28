@@ -121,13 +121,16 @@ class AnthropicAdapter(BaseProvider):
         tools: list[dict[str, Any]] | None = None,
         tool_choice: str | dict[str, Any] | None = None,
         response_model: Any | None = None,
+        timeout: float | None = None,
         **kwargs: Any
     ) -> ChatResponse:
         url = f"{self.BASE_URL}/messages"
+        effective_timeout = timeout if timeout is not None else kwargs.pop("timeout", self.timeout)
+        httpx_timeout = self.resolve_timeout(effective_timeout)
         payload = self._prepare_payload(messages, model, temperature, max_tokens, tools=tools, tool_choice=tool_choice, response_model=response_model, **kwargs)
 
-        response = httpx.post(url, headers=self._get_headers(), json=payload)
-        response.raise_for_status()
+        response = httpx.post(url, headers=self._get_headers(), json=payload, timeout=httpx_timeout)
+        self.check_response(response)
         data = response.json()
 
         content = ""
@@ -160,7 +163,8 @@ class AnthropicAdapter(BaseProvider):
             model=data["model"],
             prompt_tokens=usage.get("input_tokens", 0),
             completion_tokens=usage.get("output_tokens", 0),
-            total_tokens=usage.get("input_tokens", 0) + usage.get("output_tokens", 0)
+            total_tokens=usage.get("input_tokens", 0) + usage.get("output_tokens", 0),
+            timeout=effective_timeout,
         )
 
     def stream(
@@ -172,14 +176,17 @@ class AnthropicAdapter(BaseProvider):
         tools: list[dict[str, Any]] | None = None,
         tool_choice: str | dict[str, Any] | None = None,
         response_model: Any | None = None,
+        timeout: float | None = None,
         **kwargs: Any
     ) -> Iterator[StreamChunk]:
         url = f"{self.BASE_URL}/messages"
+        effective_timeout = timeout if timeout is not None else kwargs.pop("timeout", self.timeout)
+        httpx_timeout = self.resolve_timeout(effective_timeout)
         payload = self._prepare_payload(messages, model, temperature, max_tokens, tools=tools, tool_choice=tool_choice, response_model=response_model, **kwargs)
         payload["stream"] = True
 
-        with httpx.stream("POST", url, headers=self._get_headers(), json=payload) as response:
-            response.raise_for_status()
+        with httpx.stream("POST", url, headers=self._get_headers(), json=payload, timeout=httpx_timeout) as response:
+            self.check_response(response)
             for line in response.iter_lines():
                 if line.startswith("data: "):
                     data_str = line[6:]
@@ -219,14 +226,17 @@ class AnthropicAdapter(BaseProvider):
         tools: list[dict[str, Any]] | None = None,
         tool_choice: str | dict[str, Any] | None = None,
         response_model: Any | None = None,
+        timeout: float | None = None,
         **kwargs: Any
     ) -> ChatResponse:
         url = f"{self.BASE_URL}/messages"
+        effective_timeout = timeout if timeout is not None else kwargs.pop("timeout", self.timeout)
+        httpx_timeout = self.resolve_timeout(effective_timeout)
         payload = self._prepare_payload(messages, model, temperature, max_tokens, tools=tools, tool_choice=tool_choice, response_model=response_model, **kwargs)
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=httpx_timeout) as client:
             response = await client.post(url, headers=self._get_headers(), json=payload)
-            response.raise_for_status()
+            self.check_response(response)
             data = response.json()
 
         content = ""
@@ -259,7 +269,8 @@ class AnthropicAdapter(BaseProvider):
             model=data["model"],
             prompt_tokens=usage.get("input_tokens", 0),
             completion_tokens=usage.get("output_tokens", 0),
-            total_tokens=usage.get("input_tokens", 0) + usage.get("output_tokens", 0)
+            total_tokens=usage.get("input_tokens", 0) + usage.get("output_tokens", 0),
+            timeout=effective_timeout,
         )
 
     async def astream(
@@ -271,15 +282,18 @@ class AnthropicAdapter(BaseProvider):
         tools: list[dict[str, Any]] | None = None,
         tool_choice: str | dict[str, Any] | None = None,
         response_model: Any | None = None,
+        timeout: float | None = None,
         **kwargs: Any
     ) -> AsyncIterator[StreamChunk]:
         url = f"{self.BASE_URL}/messages"
+        effective_timeout = timeout if timeout is not None else kwargs.pop("timeout", self.timeout)
+        httpx_timeout = self.resolve_timeout(effective_timeout)
         payload = self._prepare_payload(messages, model, temperature, max_tokens, tools=tools, tool_choice=tool_choice, response_model=response_model, **kwargs)
         payload["stream"] = True
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=httpx_timeout) as client:
             async with client.stream("POST", url, headers=self._get_headers(), json=payload) as response:
-                response.raise_for_status()
+                self.check_response(response)
                 async for line in response.aiter_lines():
                     if line.startswith("data: "):
                         data_str = line[6:]

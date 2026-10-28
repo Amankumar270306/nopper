@@ -38,9 +38,12 @@ class OpenAIAdapter(BaseProvider):
         tools: list[dict[str, Any]] | None = None,
         tool_choice: str | dict[str, Any] | None = None,
         response_model: Any | None = None,
+        timeout: float | None = None,
         **kwargs: Any,
     ) -> ChatResponse:
         url = f"{self._url}/chat/completions"
+        effective_timeout = timeout if timeout is not None else kwargs.pop("timeout", self.timeout)
+        httpx_timeout = self.resolve_timeout(effective_timeout)
 
         payload: dict[str, Any] = {
             "model": model or self.default_model or "gpt-4o",
@@ -66,8 +69,8 @@ class OpenAIAdapter(BaseProvider):
                 },
             }
 
-        response = httpx.post(url, headers=self._get_headers(), json=payload, timeout=self.timeout)
-        response.raise_for_status()
+        response = httpx.post(url, headers=self._get_headers(), json=payload, timeout=httpx_timeout)
+        self.check_response(response)
         data = response.json()
 
         choice = data["choices"][0]
@@ -81,6 +84,7 @@ class OpenAIAdapter(BaseProvider):
             prompt_tokens=usage.get("prompt_tokens", 0),
             completion_tokens=usage.get("completion_tokens", 0),
             total_tokens=usage.get("total_tokens", 0),
+            timeout=effective_timeout,
         )
 
     def stream(
@@ -92,10 +96,13 @@ class OpenAIAdapter(BaseProvider):
         tools: list[dict[str, Any]] | None = None,
         tool_choice: str | dict[str, Any] | None = None,
         response_model: Any | None = None,
+        timeout: float | None = None,
         **kwargs: Any,
     ) -> Iterator[StreamChunk]:
         url = f"{self._url}/chat/completions"
         target_model = model or self.default_model or "gpt-4o"
+        effective_timeout = timeout if timeout is not None else kwargs.pop("timeout", self.timeout)
+        httpx_timeout = self.resolve_timeout(effective_timeout)
 
         payload: dict[str, Any] = {
             "model": target_model,
@@ -113,8 +120,8 @@ class OpenAIAdapter(BaseProvider):
         if tool_choice is not None:
             payload["tool_choice"] = tool_choice
 
-        with httpx.stream("POST", url, headers=self._get_headers(), json=payload, timeout=self.timeout) as response:
-            response.raise_for_status()
+        with httpx.stream("POST", url, headers=self._get_headers(), json=payload, timeout=httpx_timeout) as response:
+            self.check_response(response)
             for line in response.iter_lines():
                 if line.startswith("data: "):
                     data_str = line[6:]
@@ -135,19 +142,21 @@ class OpenAIAdapter(BaseProvider):
     def models(self) -> list[str]:
         url = f"{self._url}/models"
         response = httpx.get(url, headers=self._get_headers(), timeout=self.timeout)
-        response.raise_for_status()
+        self.check_response(response)
         data = response.json()
         return [m["id"] for m in data.get("data", [])]
 
-    def embed(self, text: str, model: str | None = None, **kwargs: Any) -> list[float]:
+    def embed(self, text: str, model: str | None = None, timeout: float | None = None, **kwargs: Any) -> list[float]:
         url = f"{self._url}/embeddings"
+        effective_timeout = timeout if timeout is not None else kwargs.pop("timeout", self.timeout)
+        httpx_timeout = self.resolve_timeout(effective_timeout)
         payload = {
             "input": text,
             "model": model or "text-embedding-3-small",
             **kwargs,
         }
-        response = httpx.post(url, headers=self._get_headers(), json=payload, timeout=self.timeout)
-        response.raise_for_status()
+        response = httpx.post(url, headers=self._get_headers(), json=payload, timeout=httpx_timeout)
+        self.check_response(response)
         data = response.json()
         return cast(list[float], data["data"][0]["embedding"])
 
@@ -160,9 +169,12 @@ class OpenAIAdapter(BaseProvider):
         tools: list[dict[str, Any]] | None = None,
         tool_choice: str | dict[str, Any] | None = None,
         response_model: Any | None = None,
+        timeout: float | None = None,
         **kwargs: Any,
     ) -> ChatResponse:
         url = f"{self._url}/chat/completions"
+        effective_timeout = timeout if timeout is not None else kwargs.pop("timeout", self.timeout)
+        httpx_timeout = self.resolve_timeout(effective_timeout)
 
         payload: dict[str, Any] = {
             "model": model or self.default_model or "gpt-4o",
@@ -188,9 +200,9 @@ class OpenAIAdapter(BaseProvider):
                 },
             }
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
+        async with httpx.AsyncClient(timeout=httpx_timeout) as client:
             response = await client.post(url, headers=self._get_headers(), json=payload)
-            response.raise_for_status()
+            self.check_response(response)
             data = response.json()
 
         choice = data["choices"][0]
@@ -204,6 +216,7 @@ class OpenAIAdapter(BaseProvider):
             prompt_tokens=usage.get("prompt_tokens", 0),
             completion_tokens=usage.get("completion_tokens", 0),
             total_tokens=usage.get("total_tokens", 0),
+            timeout=effective_timeout,
         )
 
     async def astream(
@@ -215,10 +228,13 @@ class OpenAIAdapter(BaseProvider):
         tools: list[dict[str, Any]] | None = None,
         tool_choice: str | dict[str, Any] | None = None,
         response_model: Any | None = None,
+        timeout: float | None = None,
         **kwargs: Any,
     ) -> AsyncIterator[StreamChunk]:
         url = f"{self._url}/chat/completions"
         target_model = model or self.default_model or "gpt-4o"
+        effective_timeout = timeout if timeout is not None else kwargs.pop("timeout", self.timeout)
+        httpx_timeout = self.resolve_timeout(effective_timeout)
 
         payload: dict[str, Any] = {
             "model": target_model,
@@ -236,9 +252,9 @@ class OpenAIAdapter(BaseProvider):
         if tool_choice is not None:
             payload["tool_choice"] = tool_choice
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
+        async with httpx.AsyncClient(timeout=httpx_timeout) as client:
             async with client.stream("POST", url, headers=self._get_headers(), json=payload) as response:
-                response.raise_for_status()
+                self.check_response(response)
                 async for line in response.aiter_lines():
                     if line.startswith("data: "):
                         data_str = line[6:]

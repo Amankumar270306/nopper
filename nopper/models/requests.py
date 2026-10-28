@@ -14,6 +14,7 @@ class ExecutionRequest(BaseModel):
     tool_choice: Any | None = None
     response_model: Any | None = None
     stream: bool = False
+    timeout: float | None = None
     kwargs: dict[str, Any] = Field(default_factory=dict)
 
     model_config = {"arbitrary_types_allowed": True}

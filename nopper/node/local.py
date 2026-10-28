@@ -45,20 +45,25 @@ class LocalNode(Node):
 
     def execute(self, request: ExecutionRequest) -> ChatResponse:
         provider = self._get_provider()
+        effective_timeout = request.timeout if request.timeout is not None else self._config.timeout
         try:
-            return provider.chat(
+            response = provider.chat(
                 messages=request.messages,
                 model=self._config.model,
                 tools=request.tools,
                 tool_choice=request.tool_choice,
                 response_model=request.response_model,
+                timeout=effective_timeout,
                 **request.kwargs,
             )
+            response.timeout = effective_timeout
+            return response
         except Exception as e:
             raise NodeError(f"Node '{self.name}' execution failed: {e}") from e
 
     def execute_stream(self, request: ExecutionRequest) -> Iterator[StreamChunk]:
         provider = self._get_provider()
+        effective_timeout = request.timeout if request.timeout is not None else self._config.timeout
         try:
             yield from provider.stream(
                 messages=request.messages,
@@ -66,6 +71,7 @@ class LocalNode(Node):
                 tools=request.tools,
                 tool_choice=request.tool_choice,
                 response_model=request.response_model,
+                timeout=effective_timeout,
                 **request.kwargs,
             )
         except Exception as e:
@@ -73,20 +79,25 @@ class LocalNode(Node):
 
     async def aexecute(self, request: ExecutionRequest) -> ChatResponse:
         provider = self._get_provider()
+        effective_timeout = request.timeout if request.timeout is not None else self._config.timeout
         try:
-            return await provider.achat(
+            response = await provider.achat(
                 messages=request.messages,
                 model=self._config.model,
                 tools=request.tools,
                 tool_choice=request.tool_choice,
                 response_model=request.response_model,
+                timeout=effective_timeout,
                 **request.kwargs,
             )
+            response.timeout = effective_timeout
+            return response
         except Exception as e:
             raise NodeError(f"Node '{self.name}' async execution failed: {e}") from e
 
     async def aexecute_stream(self, request: ExecutionRequest) -> AsyncIterator[StreamChunk]:
         provider = self._get_provider()
+        effective_timeout = request.timeout if request.timeout is not None else self._config.timeout
         try:
             async for chunk in provider.astream(
                 messages=request.messages,
@@ -94,6 +105,7 @@ class LocalNode(Node):
                 tools=request.tools,
                 tool_choice=request.tool_choice,
                 response_model=request.response_model,
+                timeout=effective_timeout,
                 **request.kwargs,
             ):
                 yield chunk

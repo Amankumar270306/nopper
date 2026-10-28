@@ -44,6 +44,7 @@ class AI:
         provider: str | list[str] | None = None,
         model: str | None = None,
         api_key: str | None = None,
+        timeout: float | None = None,
         max_retries: int = 3,
         auto_reload: bool = True,
         **kwargs: Any,
@@ -52,6 +53,9 @@ class AI:
         self.auto_reload = auto_reload
         self.max_retries = max_retries
         self.extra_kwargs = kwargs
+        self._timeout = timeout
+        save_location = kwargs.pop("save_location", None)
+        save_path = kwargs.pop("save_path", None)
 
         settings = load_config()
         self.track_usage = kwargs.pop("track_usage", settings.track_usage)
@@ -62,19 +66,20 @@ class AI:
         self.middleware = MiddlewarePipeline()
 
         # Resolve the underlying Node
-        if provider or model or api_key:
+        if provider or model or api_key or timeout is not None:
             p = provider[0] if isinstance(provider, list) else provider
             fallbacks = provider[1:] if isinstance(provider, list) else []
+            node_timeout = float(timeout) if timeout is not None else float(settings.timeout)
             config = NodeConfig(
                 name=self.wrapper_name,
                 provider=p or settings.provider,
                 model=model or settings.model,
                 api_key=api_key or settings.api_keys.get(p or settings.provider),
                 fallbacks=fallbacks,
-                timeout=float(settings.timeout),
+                timeout=node_timeout,
                 parameters=kwargs,
             )
-            NodeManager.save(config)
+            NodeManager.save(config, location=save_location, path=save_path)
             self._node: Node = NodeManager.resolve(self.wrapper_name)
         else:
             self._node = NodeManager.resolve(self.wrapper_name)
@@ -85,6 +90,18 @@ class AI:
         if self.auto_reload:
             self.reload()
         return self._node
+
+    @property
+    def timeout(self) -> float:
+        """Return the effective request timeout in seconds."""
+        if self._timeout is not None:
+            return self._timeout
+        return getattr(self.node.config, "timeout", None) or 60.0
+
+    @timeout.setter
+    def timeout(self, value: float | None) -> None:
+        """Set the request timeout in seconds."""
+        self._timeout = value
 
     @property
     def provider_name(self) -> str:
@@ -113,15 +130,28 @@ class AI:
         tools: list[dict[str, Any]] | None = None,
         tool_choice: str | dict[str, Any] | None = None,
         response_model: Any | None = None,
+        timeout: float | None = None,
         **kwargs: Any,
     ) -> str | ChatResponse | Any | None:
-        """Send a chat completion request."""
+        """Send a chat completion request.
+
+        Args:
+            prompt: Text prompt, list of prompts, or Message objects.
+            raw: If True, return raw ChatResponse instead of AIString.
+            tools: Tool definitions for function calling.
+            tool_choice: Tool selection policy.
+            response_model: Pydantic model for structured outputs.
+            timeout: Request timeout in seconds. If omitted, uses default.
+            **kwargs: Extra parameters passed to the provider adapter.
+        """
+        effective_timeout = timeout if timeout is not None else kwargs.pop("timeout", self._timeout)
         messages = PromptBuilder.prepare(prompt)
         request = ExecutionRequest(
             messages=messages,
             tools=tools,
             tool_choice=tool_choice,
             response_model=response_model,
+            timeout=effective_timeout,
             kwargs=kwargs,
         )
 
@@ -132,6 +162,10 @@ class AI:
         response = self.node.execute(request)
         latency = time.perf_counter() - start
         response.latency = latency
+        if effective_timeout is not None:
+            response.timeout = effective_timeout
+        elif response.timeout is None:
+            response.timeout = self.timeout
 
         response = self.middleware.run_after(response)
         self.event_bus.emit("on_response", response=response)
@@ -157,7 +191,7 @@ class AI:
             if not parsed:
                 raise ValueError("Failed to parse structured output from response.")
 
-            for attr in ("tokens", "cost", "model", "provider", "latency"):
+            for attr in ("tokens", "cost", "model", "provider", "latency", "timeout"):
                 val = getattr(response, attr, None) if attr != "tokens" else response.total_tokens
                 if not hasattr(parsed, attr):
                     object.__setattr__(parsed, attr, val)
@@ -171,9 +205,11 @@ class AI:
             model=response.model,
             provider=response.provider,
             latency=response.latency,
+            timeout=response.timeout,
         )
 
     generate = chat  # Alias for backward compatibility
+    response = chat  # Alias for .response()
 
     # ── Streaming completion ──────────────────────────────────────
 
@@ -185,18 +221,21 @@ class AI:
         tools: list[dict[str, Any]] | None = None,
         tool_choice: str | dict[str, Any] | None = None,
         response_model: Any | None = None,
+        timeout: float | None = None,
         **kwargs: Any,
     ) -> Iterator[str] | Iterator[StreamChunk]:
         """Stream a chat completion response."""
         if response_model:
             raise NotImplementedError("Streaming is not supported when response_model is provided.")
 
+        effective_timeout = timeout if timeout is not None else kwargs.pop("timeout", self._timeout)
         messages = PromptBuilder.prepare(prompt)
         request = ExecutionRequest(
             messages=messages,
             tools=tools,
             tool_choice=tool_choice,
             stream=True,
+            timeout=effective_timeout,
             kwargs=kwargs,
         )
 

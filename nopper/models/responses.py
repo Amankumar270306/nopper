@@ -17,6 +17,7 @@ class ChatResponse(BaseModel):
     total_tokens: int = Field(default=0)
     cost: float = Field(default=0.0)
     latency: float = Field(default=0.0)
+    timeout: float | None = Field(default=None)
 
 
 class AIString(str):
@@ -26,6 +27,7 @@ class AIString(str):
     model: str
     provider: str
     latency: float
+    timeout: float | None
 
     def __new__(
         cls,
@@ -35,6 +37,7 @@ class AIString(str):
         model: str = "",
         provider: str = "",
         latency: float = 0.0,
+        timeout: float | None = None,
     ) -> "AIString":
         obj = str.__new__(cls, value)
         obj.tokens = tokens
@@ -42,6 +45,7 @@ class AIString(str):
         obj.model = model
         obj.provider = provider
         obj.latency = latency
+        obj.timeout = timeout
         return obj
 
 

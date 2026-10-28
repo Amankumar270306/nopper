@@ -111,20 +111,23 @@ class GeminiAdapter(BaseProvider):
         tools: list[dict[str, Any]] | None = None,
         tool_choice: str | dict[str, Any] | None = None,
         response_model: Any | None = None,
+        timeout: float | None = None,
         **kwargs: Any
     ) -> ChatResponse:
         if not self.api_key:
             raise ValueError("Gemini API key is missing.")
 
         target_model = model or self.default_model or "gemini-1.5-pro"
+        effective_timeout = timeout if timeout is not None else kwargs.pop("timeout", self.timeout)
+        httpx_timeout = self.resolve_timeout(effective_timeout)
 
         model_path = target_model if target_model.startswith("models/") else f"models/{target_model}"
 
         url = f"{self.BASE_URL}/{model_path.split('/')[-1]}:generateContent?key={self.api_key}"
         payload = self._prepare_payload(messages, temperature, max_tokens, tools=tools, tool_choice=tool_choice, response_model=response_model, **kwargs)
 
-        response = httpx.post(url, headers={"Content-Type": "application/json"}, json=payload)
-        response.raise_for_status()
+        response = httpx.post(url, headers={"Content-Type": "application/json"}, json=payload, timeout=httpx_timeout)
+        self.check_response(response)
         data = response.json()
 
         candidate = data.get("candidates", [{}])[0]
@@ -161,7 +164,8 @@ class GeminiAdapter(BaseProvider):
             model=target_model,
             prompt_tokens=usage.get("promptTokenCount", 0),
             completion_tokens=usage.get("candidatesTokenCount", 0),
-            total_tokens=usage.get("totalTokenCount", 0)
+            total_tokens=usage.get("totalTokenCount", 0),
+            timeout=effective_timeout,
         )
 
     def stream(
@@ -173,19 +177,22 @@ class GeminiAdapter(BaseProvider):
         tools: list[dict[str, Any]] | None = None,
         tool_choice: str | dict[str, Any] | None = None,
         response_model: Any | None = None,
+        timeout: float | None = None,
         **kwargs: Any
     ) -> Iterator[StreamChunk]:
         if not self.api_key:
             raise ValueError("Gemini API key is missing.")
 
         target_model = model or self.default_model or "gemini-1.5-pro"
+        effective_timeout = timeout if timeout is not None else kwargs.pop("timeout", self.timeout)
+        httpx_timeout = self.resolve_timeout(effective_timeout)
         model_path = target_model if target_model.startswith("models/") else f"models/{target_model}"
 
         url = f"{self.BASE_URL}/{model_path.split('/')[-1]}:streamGenerateContent?alt=sse&key={self.api_key}"
         payload = self._prepare_payload(messages, temperature, max_tokens, tools=tools, tool_choice=tool_choice, response_model=response_model, **kwargs)
 
-        with httpx.stream("POST", url, headers={"Content-Type": "application/json"}, json=payload) as response:
-            response.raise_for_status()
+        with httpx.stream("POST", url, headers={"Content-Type": "application/json"}, json=payload, timeout=httpx_timeout) as response:
+            self.check_response(response)
             for line in response.iter_lines():
                 if line.startswith("data: "):
                     data_str = line[6:]
@@ -246,20 +253,23 @@ class GeminiAdapter(BaseProvider):
         tools: list[dict[str, Any]] | None = None,
         tool_choice: str | dict[str, Any] | None = None,
         response_model: Any | None = None,
+        timeout: float | None = None,
         **kwargs: Any
     ) -> ChatResponse:
         if not self.api_key:
             raise ValueError("Gemini API key is missing.")
 
         target_model = model or self.default_model or "gemini-1.5-pro"
+        effective_timeout = timeout if timeout is not None else kwargs.pop("timeout", self.timeout)
+        httpx_timeout = self.resolve_timeout(effective_timeout)
         model_path = target_model if target_model.startswith("models/") else f"models/{target_model}"
 
         url = f"{self.BASE_URL}/{model_path.split('/')[-1]}:generateContent?key={self.api_key}"
         payload = self._prepare_payload(messages, temperature, max_tokens, tools=tools, tool_choice=tool_choice, response_model=response_model, **kwargs)
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=httpx_timeout) as client:
             response = await client.post(url, headers={"Content-Type": "application/json"}, json=payload)
-            response.raise_for_status()
+            self.check_response(response)
             data = response.json()
 
         candidate = data.get("candidates", [{}])[0]
@@ -296,7 +306,8 @@ class GeminiAdapter(BaseProvider):
             model=target_model,
             prompt_tokens=usage.get("promptTokenCount", 0),
             completion_tokens=usage.get("candidatesTokenCount", 0),
-            total_tokens=usage.get("totalTokenCount", 0)
+            total_tokens=usage.get("totalTokenCount", 0),
+            timeout=effective_timeout,
         )
 
     async def astream(
@@ -308,20 +319,23 @@ class GeminiAdapter(BaseProvider):
         tools: list[dict[str, Any]] | None = None,
         tool_choice: str | dict[str, Any] | None = None,
         response_model: Any | None = None,
+        timeout: float | None = None,
         **kwargs: Any
     ) -> AsyncIterator[StreamChunk]:
         if not self.api_key:
             raise ValueError("Gemini API key is missing.")
 
         target_model = model or self.default_model or "gemini-1.5-pro"
+        effective_timeout = timeout if timeout is not None else kwargs.pop("timeout", self.timeout)
+        httpx_timeout = self.resolve_timeout(effective_timeout)
         model_path = target_model if target_model.startswith("models/") else f"models/{target_model}"
 
         url = f"{self.BASE_URL}/{model_path.split('/')[-1]}:streamGenerateContent?alt=sse&key={self.api_key}"
         payload = self._prepare_payload(messages, temperature, max_tokens, tools=tools, tool_choice=tool_choice, response_model=response_model, **kwargs)
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=httpx_timeout) as client:
             async with client.stream("POST", url, headers={"Content-Type": "application/json"}, json=payload) as response:
-                response.raise_for_status()
+                self.check_response(response)
                 async for line in response.aiter_lines():
                     if line.startswith("data: "):
                         data_str = line[6:]

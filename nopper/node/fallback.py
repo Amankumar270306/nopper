@@ -16,6 +16,14 @@ logger = logging.getLogger(__name__)
 class FallbackNode(Node):
     """FallbackNode attempts execution on primary provider, falling back on failure."""
 
+    def _get_api_key(self, provider_name: str) -> str | None:
+        """Resolve API key for a specific provider in fallback chain."""
+        if provider_name == self.config.provider:
+            return self.config.api_key
+        from nopper.config.loader import load_config
+        settings = load_config()
+        return settings.api_keys.get(provider_name)
+
     def _get_providers(self) -> list[tuple[str, str]]:
         """Return list of (provider, model) pairs starting with primary."""
         pairs = [(self.config.provider, self.config.model)]
@@ -30,25 +38,29 @@ class FallbackNode(Node):
     def execute(self, request: ExecutionRequest) -> ChatResponse:
         providers = self._get_providers()
         last_error: Exception | None = None
+        effective_timeout = request.timeout if request.timeout is not None else self.config.timeout
 
         for i, (provider_name, model_name) in enumerate(providers):
             try:
                 provider = ProviderFactory.create(
                     provider_name=provider_name,
-                    api_key=self.config.api_key,
+                    api_key=self._get_api_key(provider_name),
                     model=model_name,
                     base_url=self.config.base_url,
-                    timeout=self.config.timeout,
+                    timeout=effective_timeout,
                     **self.config.parameters,
                 )
-                return provider.chat(
+                response = provider.chat(
                     messages=request.messages,
                     model=model_name,
                     tools=request.tools,
                     tool_choice=request.tool_choice,
                     response_model=request.response_model,
+                    timeout=effective_timeout,
                     **request.kwargs,
                 )
+                response.timeout = effective_timeout
+                return response
             except Exception as e:
                 last_error = e
                 if i < len(providers) - 1:
@@ -66,15 +78,16 @@ class FallbackNode(Node):
     def execute_stream(self, request: ExecutionRequest) -> Iterator[StreamChunk]:
         providers = self._get_providers()
         last_error: Exception | None = None
+        effective_timeout = request.timeout if request.timeout is not None else self.config.timeout
 
         for i, (provider_name, model_name) in enumerate(providers):
             try:
                 provider = ProviderFactory.create(
                     provider_name=provider_name,
-                    api_key=self.config.api_key,
+                    api_key=self._get_api_key(provider_name),
                     model=model_name,
                     base_url=self.config.base_url,
-                    timeout=self.config.timeout,
+                    timeout=effective_timeout,
                     **self.config.parameters,
                 )
                 yield from provider.stream(
@@ -83,6 +96,7 @@ class FallbackNode(Node):
                     tools=request.tools,
                     tool_choice=request.tool_choice,
                     response_model=request.response_model,
+                    timeout=effective_timeout,
                     **request.kwargs,
                 )
                 return
@@ -103,25 +117,29 @@ class FallbackNode(Node):
     async def aexecute(self, request: ExecutionRequest) -> ChatResponse:
         providers = self._get_providers()
         last_error: Exception | None = None
+        effective_timeout = request.timeout if request.timeout is not None else self.config.timeout
 
         for i, (provider_name, model_name) in enumerate(providers):
             try:
                 provider = ProviderFactory.create(
                     provider_name=provider_name,
-                    api_key=self.config.api_key,
+                    api_key=self._get_api_key(provider_name),
                     model=model_name,
                     base_url=self.config.base_url,
-                    timeout=self.config.timeout,
+                    timeout=effective_timeout,
                     **self.config.parameters,
                 )
-                return await provider.achat(
+                response = await provider.achat(
                     messages=request.messages,
                     model=model_name,
                     tools=request.tools,
                     tool_choice=request.tool_choice,
                     response_model=request.response_model,
+                    timeout=effective_timeout,
                     **request.kwargs,
                 )
+                response.timeout = effective_timeout
+                return response
             except Exception as e:
                 last_error = e
                 if i < len(providers) - 1:
@@ -139,15 +157,16 @@ class FallbackNode(Node):
     async def aexecute_stream(self, request: ExecutionRequest) -> AsyncIterator[StreamChunk]:
         providers = self._get_providers()
         last_error: Exception | None = None
+        effective_timeout = request.timeout if request.timeout is not None else self.config.timeout
 
         for i, (provider_name, model_name) in enumerate(providers):
             try:
                 provider = ProviderFactory.create(
                     provider_name=provider_name,
-                    api_key=self.config.api_key,
+                    api_key=self._get_api_key(provider_name),
                     model=model_name,
                     base_url=self.config.base_url,
-                    timeout=self.config.timeout,
+                    timeout=effective_timeout,
                     **self.config.parameters,
                 )
                 async for chunk in provider.astream(
@@ -156,6 +175,7 @@ class FallbackNode(Node):
                     tools=request.tools,
                     tool_choice=request.tool_choice,
                     response_model=request.response_model,
+                    timeout=effective_timeout,
                     **request.kwargs,
                 ):
                     yield chunk
@@ -180,7 +200,7 @@ class FallbackNode(Node):
             try:
                 provider = ProviderFactory.create(
                     provider_name=provider_name,
-                    api_key=self.config.api_key,
+                    api_key=self._get_api_key(provider_name),
                     model=model_name,
                     base_url=self.config.base_url,
                     timeout=self.config.timeout,

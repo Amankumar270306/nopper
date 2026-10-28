@@ -34,3 +34,4 @@ class NopperSettings(BaseSettings):
     track_format: str = Field(default="csv", description="Format of the tracking file (csv/json)")
 
     default_node: str | None = Field(default=None, description="Default node name")
+    node_locations: dict[str, str] = Field(default_factory=dict, description="Custom file paths for nodes")
